@@ -1,0 +1,114 @@
+#!/bin/bash
+
+if [ "$(stat -c "%U" ${JIRA_HOME})" != "${SYSTEM_USER}" ]; then
+  chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} ${JIRA_HOME}
+fi
+
+if [ "$(stat -c "%Y" "${JIRA_INST}/atlassian-jira/WEB-INF/classes/jira-application.properties")" -eq "0" ]; then
+  sed --in-place "s~# jira.home=c:\/jira\/data~jira.home=$JIRA_HOME~" "${JIRA_INST}/atlassian-jira/WEB-INF/classes/jira-application.properties"
+fi
+
+if [ "$(stat -c "%Y" "${JIRA_INST}/conf/server.xml")" -eq "0" ]; then
+  xmlstarlet ed --inplace -s '//Service[@name="Tomcat-Standalone"]' -t "elem" -n 'Connector port="8009" URIEncoding="UTF-8" enableLookups="false" protocol="AJP/1.3"' "${JIRA_INST}/conf/server.xml"
+
+  if [ -n "${TOMCAT_PROXY_NAME}" ]; then
+    xmlstarlet ed --inplace --insert '//Connector[@port="8090"]' --type "attr" --name "proxyName" --value "${TOMCAT_PROXY_NAME}" "${JIRA_INST}/conf/server.xml"
+  fi
+  if [ -n "${TOMCAT_PROXY_PORT}" ]; then
+    xmlstarlet ed --inplace --insert '//Connector[@port="8090"]' --type "attr" --name "proxyPort" --value "${TOMCAT_PROXY_PORT}" "${JIRA_INST}/conf/server.xml"
+  fi
+  if [ -n "${TOMCAT_PROXY_SCHEME}" ]; then
+    xmlstarlet ed --inplace --insert '//Connector[@port="8090"]' --type "attr" --name "scheme" --value "${TOMCAT_PROXY_SCHEME}" "${JIRA_INST}/conf/server.xml"
+  fi
+  if [ -n "${TOMCAT_PROXY_SECURE}" ]; then
+    xmlstarlet ed --inplace --insert '//Connector[@port="8090"]' --type "attr" --name "secure" --value "${TOMCAT_PROXY_SECURE}" "${JIRA_INST}/conf/server.xml"
+  fi
+  if [ -n "${TOMCAT_CONTEXT_PATH}" ]; then
+    xmlstarlet ed --inplace --update '//Context/@path' --value "${TOMCAT_CONTEXT_PATH}" "${JIRA_INST}/conf/server.xml"
+  fi
+fi
+
+if [ "$(stat -c "%Y" "${JIRA_INST}/bin/setenv.sh")" -eq "0" ]; then
+  if [ -n "${JVM_MEMORY_MIN}" ]; then
+    sed --in-place "s/-Xms[0-9]\{4\}m/-Xms${JVM_MEMORY_MIN}/" ${JIRA_INST}/bin/setenv.sh
+  fi
+  if [ -n "${JVM_MEMORY_MAX}" ]; then
+    sed --in-place "s/-Xmx[0-9]\{4\}m/-Xmx${JVM_MEMORY_MAX}/" ${JIRA_INST}/bin/setenv.sh
+  fi
+fi
+
+
+function createConfluenceTempDirectory() {
+  JIRA_CATALINA_TMPDIR=${CONF_HOME}/temp
+
+  if [ -n "${CATALINA_TMPDIR}" ]; then
+    CONFLUENCE_CATALINA_TMPDIR=$CATALINA_TMPDIR
+  fi
+
+  if [ ! -d "${JIRA_CATALINA_TMPDIR}" ]; then
+    mkdir -p ${JIRA_CATALINA_TMPDIR}
+    export CATALINA_TMPDIR="$JIRA_CATALINA_TMPDIR"
+  fi
+}
+
+function processConfluenceLogfileSettings() {
+  if [ -n "${JIRA_LOGFILE_LOCATION}" ]; then
+    confluence_logfile=${JIRA_LOGFILE_LOCATION}
+  fi
+
+  if [ ! -d "${confluence_logfile}" ]; then
+    mkdir -p ${confluence_logfile}
+  fi
+}
+
+function processConfluenceProxySettings() {
+  if [ -n "${JIRA_PROXY_NAME}" ]; then
+    xmlstarlet ed -P -S -L --insert "//Connector[not(@proxyName)]" --type attr -n proxyName --value "${JIRA_PROXY_NAME}" ${JIRA_INST}/conf/server.xml
+  fi
+
+  if [ -n "${JIRA_PROXY_PORT}" ]; then
+    xmlstarlet ed -P -S -L --insert "//Connector[not(@proxyPort)]" --type attr -n proxyPort --value "${JIRA_PROXY_PORT}" ${JIRA_INST}/conf/server.xml
+  fi
+
+  if [ -n "${JIRA_PROXY_SCHEME}" ]; then
+    xmlstarlet ed -P -S -L --insert "//Connector[not(@scheme)]" --type attr -n scheme --value "${JIRA_PROXY_SCHEME}" ${JIRA_INST}/conf/server.xml
+  fi
+}
+
+function relayConfluenceLogFiles() {
+  TARGET_PROPERTY=1catalina.org.apache.juli.AsyncFileHandler.directory
+  sed -i "/${TARGET_PROPERTY}/d" ${JIRA_INST}/conf/logging.properties
+  echo "${TARGET_PROPERTY} = ${confluence_logfile}" >> ${JIRA_INST}/conf/logging.properties
+  TARGET_PROPERTY=2localhost.org.apache.juli.AsyncFileHandler.directory
+  sed -i "/${TARGET_PROPERTY}/d" ${JIRA_INST}/conf/logging.properties
+  echo "${TARGET_PROPERTY} = ${confluence_logfile}" >> ${JIRA_INST}/conf/logging.properties
+  TARGET_PROPERTY=3manager.org.apache.juli.AsyncFileHandler.directory
+  sed -i "/${TARGET_PROPERTY}/d" ${JIRA_INST}/conf/logging.properties
+  echo "${TARGET_PROPERTY} = ${confluence_logfile}" >> ${JIRA_INST}/conf/logging.properties
+  TARGET_PROPERTY=4host-manager.org.apache.juli.AsyncFileHandler.directory
+  sed -i "/${TARGET_PROPERTY}/d" ${JIRA_INST}/conf/logging.properties
+  echo "${TARGET_PROPERTY} = ${confluence_logfile}" >> ${JIRA_INST}/conf/logging.properties
+}
+
+if [ -n "${JIRA_DELAYED_START}" ]; then
+  sleep ${JIRA_DELAYED_START}
+fi
+
+if [ -n "${SSL_SERVER_ALIAS}" ]; then
+  echo changeit | /usr/lib/jvm/java-8-oracle/bin/keytool -import -alias ${SSL_SERVER_ALIAS} -keystore /usr/lib/jvm/java-8-oracle/jre/lib/security/cacerts -file ${JIRA_HOME}/public.crt -noprompt
+fi
+
+createConfluenceTempDirectory
+
+processConfluenceProxySettings
+
+if [ -n "${JIRA_LOGFILE_LOCATION}" ]; then
+  processConfluenceLogfileSettings
+  relayConfluenceLogFiles
+fi
+
+if [ "$1" = 'jira' ]; then
+  /opt/jira/bin/start-jira.sh -fg
+fi
+
+exec "$@"

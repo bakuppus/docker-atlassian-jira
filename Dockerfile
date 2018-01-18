@@ -1,57 +1,77 @@
-FROM openjdk:8
+##############################################################################
+# Dockerfile to build Atlassian Jira container images
+# Based on frolvlad/alpine-oraclejdk8:cleaned
+##############################################################################
 
-# Configuration variables.
-ENV JIRA_HOME     /var/atlassian/jira
-ENV JIRA_INSTALL  /opt/atlassian/jira
-ENV JIRA_VERSION  7.7.0
+FROM frolvlad/alpine-oraclejdk8:cleaned
+MAINTAINER Blacs30 <gitlab@lisowski-development.com>
+
+# permissions
+ARG CONTAINER_UID=1000
+ARG CONTAINER_GID=1000
+
+ARG VERSION=7.7.0
+
+# Setup useful environment variables
+ENV JIRA_INST=/opt/jira \
+  JIRA_HOME=/var/atlassian/jira \
+  SYSTEM_USER=jira \
+  SYSTEM_GROUP=jira \
+  SYSTEM_HOME=/home/jira \
+  MYSQL_DRIVER_VERSION=5.1.38 \
+  POSTGRESQL_DRIVER_VERSION=9.4.1212
 
 # Install Atlassian JIRA and helper tools and setup initial home
 # directory structure.
 RUN set -x \
-    && echo "deb http://ftp.debian.org/debian jessie-backports main" > /etc/apt/sources.list.d/jessie-backports.list \
-    && apt-get update --quiet \
-    && apt-get install --quiet --yes --no-install-recommends xmlstarlet \
-    && apt-get install --quiet --yes --no-install-recommends -t jessie-backports libtcnative-1 \
-    && apt-get clean \
-    && mkdir -p                "${JIRA_HOME}" \
-    && mkdir -p                "${JIRA_HOME}/caches/indexes" \
-    && chmod -R 700            "${JIRA_HOME}" \
-    && chown -R daemon:daemon  "${JIRA_HOME}" \
-    && mkdir -p                "${JIRA_INSTALL}/conf/Catalina" \
-    && curl -Ls                "https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-${JIRA_VERSION}.tar.gz" | tar -xz --directory "${JIRA_INSTALL}" --strip-components=1 --no-same-owner \
-    && curl -Ls                "https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-5.1.38.tar.gz" | tar -xz --directory "${JIRA_INSTALL}/lib" --strip-components=1 --no-same-owner "mysql-connector-java-5.1.38/mysql-connector-java-5.1.38-bin.jar" \
-    && rm -f                   "${JIRA_INSTALL}/lib/postgresql-9.1-903.jdbc4-atlassian-hosted.jar" \
-    && curl -Ls                "https://jdbc.postgresql.org/download/postgresql-9.4.1212.jar" -o "${JIRA_INSTALL}/lib/postgresql-9.4.1212.jar" \
-    && chmod -R 700            "${JIRA_INSTALL}/conf" \
-    && chmod -R 700            "${JIRA_INSTALL}/logs" \
-    && chmod -R 700            "${JIRA_INSTALL}/temp" \
-    && chmod -R 700            "${JIRA_INSTALL}/work" \
-    && chown -R daemon:daemon  "${JIRA_INSTALL}/conf" \
-    && chown -R daemon:daemon  "${JIRA_INSTALL}/logs" \
-    && chown -R daemon:daemon  "${JIRA_INSTALL}/temp" \
-    && chown -R daemon:daemon  "${JIRA_INSTALL}/work" \
-    && sed --in-place          "s/java version/openjdk version/g" "${JIRA_INSTALL}/bin/check-java.sh" \
-    && echo -e                 "\njira.home=$JIRA_HOME" >> "${JIRA_INSTALL}/atlassian-jira/WEB-INF/classes/jira-application.properties" \
-    && touch -d "@0"           "${JIRA_INSTALL}/conf/server.xml"
+  && apk update \
+  && apk add \
+  bash \
+  tar \
+  xmlstarlet \
+  wget \
+  ca-certificates \
+  --update-cache \
+  --allow-untrusted \
+  --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
+  --repository http://dl-cdn.alpinelinux.org/alpine/edge/community \
+  && update-ca-certificates    \
+  && mkdir -p ${JIRA_INST} \
+  && mkdir -p ${JIRA_HOME} \
+  && mkdir -p "${JIRA_HOME}/caches/indexes" \
+  && mkdir -p "${JIRA_INST}/conf/Catalina" \
+  && mkdir -p ${SYSTEM_HOME} \
+  && addgroup -S ${SYSTEM_GROUP} \
+  && adduser -S -D -G ${SYSTEM_GROUP} -h ${SYSTEM_HOME} -s /bin/sh ${SYSTEM_USER} \
+  && chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} ${SYSTEM_HOME} \
+  && wget -O /tmp/atlassian-jira-${VERSION}.tar.gz https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-${VERSION}.tar.gz \
+  && tar xfz /tmp/atlassian-jira-${VERSION}.tar.gz --strip-components=1 -C ${JIRA_INST} \
+  && rm /tmp/atlassian-jira-${VERSION}.tar.gz \
+  && chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} ${JIRA_INST} \
+  && touch -d "@0" "${JIRA_INST}/conf/server.xml" \
+  && touch -d "@0" "${JIRA_INST}/bin/setenv.sh" \
+  && touch -d "@0" "${JIRA_INST}/atlassian-jira/WEB-INF/classes/jira-application.properties" \
+  && rm -f ${JIRA_INST}/lib/mysql-connector-java*.jar \
+  && wget -O /tmp/mysql-connector-java-${MYSQL_DRIVER_VERSION}.tar.gz http://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-${MYSQL_DRIVER_VERSION}.tar.gz \
+  && tar xzf /tmp/mysql-connector-java-${MYSQL_DRIVER_VERSION}.tar.gz -C /tmp \
+  && cp /tmp/mysql-connector-java-${MYSQL_DRIVER_VERSION}/mysql-connector-java-${MYSQL_DRIVER_VERSION}-bin.jar ${JIRA_INST}/lib/mysql-connector-java-${MYSQL_DRIVER_VERSION}-bin.jar \
+  && rm -f ${JIRA_INST}/lib/postgresql-*.jar \
+  && wget -O ${JIRA_INST}/lib/postgresql-${POSTGRESQL_DRIVER_VERSION}.jar https://jdbc.postgresql.org/download/postgresql-${POSTGRESQL_DRIVER_VERSION}.jar \
+  && rm -rf /var/cache/apk/*                   \
+  && rm -rf /tmp/*                                   \
+  && rm -rf /var/log/*
 
-# Use the default unprivileged account. This could be considered bad practice
-# on systems where multiple processes end up being executed by 'daemon' but
-# here we only ever run one process anyway.
-USER daemon:daemon
+ADD files/service /usr/local/bin/service
+ADD files/entrypoint /usr/local/bin/entrypoint
 
-# Expose default HTTP connector port.
 EXPOSE 8080
 
 # Set volume mount points for installation and home directory. Changes to the
 # home directory needs to be persisted as well as parts of the installation
 # directory due to eg. logs.
-VOLUME ["/var/atlassian/jira", "/opt/atlassian/jira/logs"]
+WORKDIR ${JIRA_HOME}
+VOLUME [ "${JIRA_HOME}", "/opt/atlassian/jira/logs"]
 
-# Set the default working directory as the installation directory.
-WORKDIR /var/atlassian/jira
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
 
-COPY "docker-entrypoint.sh" "/"
-ENTRYPOINT ["/docker-entrypoint.sh"]
-
-# Run Atlassian JIRA as a foreground process by default.
-CMD ["/opt/atlassian/jira/bin/catalina.sh", "run"]
+CMD ["/usr/local/bin/service"]

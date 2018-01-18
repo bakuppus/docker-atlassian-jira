@@ -1,0 +1,60 @@
+version: '2'
+services:
+  jira-postgres:
+    image: postgres:9.6
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_DB: jiradb
+      POSTGRES_PASSWORD: jiradb
+      POSTGRES_USER: jiradb
+    stdin_open: true
+    tty: true
+    volumes_from:
+    - jira-postgres-data
+    labels:
+      io.rancher.container.pull_image: always
+      io.rancher.sidekicks: jira-postgres-data
+
+  jira:
+    image: blacs30/docker-atlassian-jira:7.7.0
+    environment:
+      TOMCAT_PROXY_NAME: jira.lis.priv
+      TOMCAT_PROXY_PORT: '443'
+      TOMCAT_PROXY_SCHEME: https
+      TOMCAT_PROXY_SECURE: 'true'
+      JVM_MEMORY_MIN: 128m
+      JVM_MEMORY_MAX: 512m
+      SSL_SERVER_ALIAS: jira.lis.priv
+    stdin_open: true
+    tty: true
+    links:
+    - jira-postgres:jira-postgres
+    volumes_from:
+    - jira-data
+    ports:
+    - 8080:8080/tcp
+    labels:
+      rap.port: '8090'
+      io.rancher.sidekicks: jira-data
+      rap.host: jira.lis.priv
+      rap.listen_http_ports: '443'
+
+  jira-postgres-data:
+    image: busybox
+    network_mode: none
+    volumes:
+    - ./jira/pgdata:/var/lib/postgresql/data
+    #- /mnt/data/jira/pgdata:/var/lib/postgresql/data
+    labels:
+      io.rancher.container.start_once: 'true'
+
+  jira-data:
+    image: busybox
+    network_mode: none
+    volumes:
+    - ./jira/data:/var/atlassian/jira
+    #- /mnt/data/jira/data:/var/atlassian/jira
+    links:
+    - jira-postgres:jira-postgres
+    labels:
+      io.rancher.container.start_once: 'true'
