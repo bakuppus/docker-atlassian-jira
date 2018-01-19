@@ -44,7 +44,7 @@ RUN set -x \
   && addgroup -S ${SYSTEM_GROUP} \
   && adduser -S -D -G ${SYSTEM_GROUP} -h ${SYSTEM_HOME} -s /bin/sh ${SYSTEM_USER} \
   && chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} ${SYSTEM_HOME} \
-  && wget -O /tmp/atlassian-jira-${VERSION}.tar.gz https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-${VERSION}.tar.gz \
+  && wget -O /tmp/atlassian-jira-${VERSION}.tar.gz https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-software-${VERSION}.tar.gz \
   && tar xfz /tmp/atlassian-jira-${VERSION}.tar.gz --strip-components=1 -C ${JIRA_INST} \
   && rm /tmp/atlassian-jira-${VERSION}.tar.gz \
   && chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} ${JIRA_INST} \
@@ -70,7 +70,7 @@ EXPOSE 8080
 # home directory needs to be persisted as well as parts of the installation
 # directory due to eg. logs.
 WORKDIR ${JIRA_HOME}
-VOLUME [ "${JIRA_HOME}", "/opt/atlassian/jira/logs"]
+VOLUME [ "${JIRA_HOME}", "/opt/jira/logs"]
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
 
