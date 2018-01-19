@@ -34,7 +34,7 @@ services:
     ports:
     - 8080:8080/tcp
     labels:
-      rap.port: '8090'
+      rap.port: '8080'
       io.rancher.sidekicks: jira-data
       rap.host: jira.lis.priv
       rap.listen_http_ports: '443'
