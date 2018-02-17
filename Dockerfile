@@ -10,7 +10,7 @@ MAINTAINER Blacs30 <gitlab@lisowski-development.com>
 ARG CONTAINER_UID=1000
 ARG CONTAINER_GID=1000
 
-ARG VERSION=7.7.0
+ARG VERSION=7.7.1
 
 # Setup useful environment variables
 ENV JIRA_INST=/opt/jira \
