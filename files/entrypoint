@@ -8,6 +8,7 @@ if [ "$(stat -c "%Y" "${JIRA_INST}/atlassian-jira/WEB-INF/classes/jira-applicati
   sed --in-place "s~# jira.home=c:\/jira\/data~jira.home=$JIRA_HOME~" "${JIRA_INST}/atlassian-jira/WEB-INF/classes/jira-application.properties"
 fi
 
+# This sets the tomcat proxy values initially
 if [ "$(stat -c "%Y" "${JIRA_INST}/conf/server.xml")" -eq "0" ]; then
   xmlstarlet ed --inplace -s '//Service[@name="Tomcat-Standalone"]' -t "elem" -n 'Connector port="8009" URIEncoding="UTF-8" enableLookups="false" protocol="AJP/1.3"' "${JIRA_INST}/conf/server.xml"
 
@@ -27,6 +28,21 @@ if [ "$(stat -c "%Y" "${JIRA_INST}/conf/server.xml")" -eq "0" ]; then
     xmlstarlet ed --inplace --update '//Context/@path' --value "${TOMCAT_CONTEXT_PATH}" "${JIRA_INST}/conf/server.xml"
   fi
 fi
+
+#This updates the tomcat proxy values in case they've changed
+if [ "${TOMCAT_PROXY_NAME}" != "$(xmlstarlet sel -t -v '//Connector[@port="8080"]/@proxyName' ${JIRA_INST}/conf/server.xml)" ]; then
+  xmlstarlet ed --inplace --update '//Connector[@port="8080"]/@proxyName' --value "${TOMCAT_PROXY_NAME}" "${JIRA_INST}/conf/server.xml"
+fi
+if [ "${TOMCAT_PROXY_PORT}" != "$(xmlstarlet sel -t -v '//Connector[@port="8080"]/@proxyPort' ${JIRA_INST}/conf/server.xml)" ]; then
+  xmlstarlet ed --inplace --update '//Connector[@port="8080"]/@proxyPort' --value "${TOMCAT_PROXY_PORT}" "${JIRA_INST}/conf/server.xml"
+fi
+if [ "${TOMCAT_PROXY_SCHEME}" != "$(xmlstarlet sel -t -v '//Connector[@port="8080"]/@scheme' ${JIRA_INST}/conf/server.xml)" ]; then
+  xmlstarlet ed --inplace --update '//Connector[@port="8080"]/@scheme' --value "${TOMCAT_PROXY_SCHEME}" "${JIRA_INST}/conf/server.xml"
+fi
+if [ "${TOMCAT_PROXY_SECURE}" != "$(xmlstarlet sel -t -v '//Connector[@port="8080"]/@secure' ${JIRA_INST}/conf/server.xml)" ]; then  
+  xmlstarlet ed --inplace --update '//Connector[@port="8080"]/@secure' --value "${TOMCAT_PROXY_SECURE}" "${JIRA_INST}/conf/server.xml"
+fi
+
 
 if [ "$(stat -c "%Y" "${JIRA_INST}/bin/setenv.sh")" -eq "0" ]; then
   if [ -n "${JVM_MEMORY_MIN}" ]; then
